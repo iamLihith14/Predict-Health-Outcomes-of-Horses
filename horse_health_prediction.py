@@ -12,92 +12,114 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 
 # Define dataset URLs
-train_csv_url = "https://raw.githubusercontent.com/iamLihith14/Predict-Health-Outcomes-of-Horses/abc81bc19cfcc9f48df7d7d20d4669cd4f936064/train.csv"
-test_csv_url = "https://raw.githubusercontent.com/iamLihith14/Predict-Health-Outcomes-of-Horses/abc81bc19cfcc9f48df7d7d20d4669cd4f936064/test%20(1).csv"
+train_csv_url = "https://raw.githubusercontent.com/iamLihith14/Predict-Health-Outcomes-of-Horses/main/train.csv"
+test_csv_url = "https://raw.githubusercontent.com/iamLihith14/Predict-Health-Outcomes-of-Horses/main/test%20(1).csv"
+sample_submission_csv_url = "https://raw.githubusercontent.com/iamLihith14/Predict-Health-Outcomes-of-Horses/main/sample_submission.csv"
 
 # Load data
-train_df = pd.read_csv(train_csv_url)
-test_df = pd.read_csv(test_csv_url)
+train_data = pd.read_csv(train_csv_url)
+test_data = pd.read_csv(test_csv_url)
+sample_submission = pd.read_csv(sample_submission_csv_url)
 
-# Selecting relevant columns
-cols = ['surgery', 'age', 'rectal_temp', 'pulse', 'respiratory_rate', 'pain', 'packed_cell_volume', 'total_protein', 'outcome']
-train_df = train_df[cols]
-test_df = test_df[cols[:-1]]  # Test data does not have the 'outcome' column
+# Combine training and test data for preprocessing
+combined_data = pd.concat([train_data, test_data], ignore_index=True)
 
-# Step 1: Preprocess the data
+# Preprocess data
 label_encoder = LabelEncoder()
-train_df['surgery'] = label_encoder.fit_transform(train_df['surgery'])
-train_df['age'] = label_encoder.fit_transform(train_df['age'])
-train_df['pain'] = label_encoder.fit_transform(train_df['pain'])
-train_df['outcome'] = label_encoder.fit_transform(train_df['outcome'])
 
-# Replace missing values with the median
-train_df.fillna(train_df.median(), inplace=True)
+# Encode categorical columns
+categorical_columns = ['surgery', 'age', 'temp_of_extremities', 'peripheral_pulse', 'mucous_membrane',
+                       'capillary_refill_time', 'pain', 'peristalsis', 'abdominal_distention',
+                       'nasogastric_tube', 'nasogastric_reflux', 'rectal_exam_feces', 'abdomen',
+                       'abdomo_appearance', 'surgical_lesion', 'cp_data']
 
-X = train_df.drop('outcome', axis=1)
-y = train_df['outcome']
+for col in categorical_columns:
+    combined_data[col] = label_encoder.fit_transform(combined_data[col])
 
+# Split the data back into training and test data
+train_data = combined_data[:len(train_data)]
+test_data = combined_data[len(train_data):]
+
+# Split the data into features (X) and target (y)
+X_train = train_data.drop(columns=['outcome'])
+y_train = train_data['outcome']
+X_test = test_data.drop(columns=['outcome'])
+
+# Normalize the data
 scaler = StandardScaler()
-X = scaler.fit_transform(X)
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
 
-# Split the data into training and validation sets
-X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
-
-# Step 2: Build and train the model
+# Build the model
 model = keras.Sequential([
-    layers.Dense(64, activation='relu', input_dim=X.shape[1]),
+    layers.Dense(64, activation='relu', input_dim=X_train.shape[1]),
     layers.Dense(32, activation='relu'),
-    layers.Dense(3, activation='softmax')  # 3 classes for outcomes
+    layers.Dense(3, activation='softmax')  # Assuming 3 classes for outcome
 ])
 
 model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 
 # Train the model
-model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=10, batch_size=32, verbose=1)
+model.fit(X_train, y_train, epochs=10, batch_size=32, verbose=1)
 
-# Create a Streamlit app
-st.set_page_config(
-    page_title="Horse Health Outcome Predictor",
-    layout="wide",
-)
-
+# Streamlit App
 st.title("Horse Health Outcome Predictor")
-st.write("Predict the health outcome of a horse based on its attributes.")
+st.sidebar.title("Input Features")
 
-# Create input fields for user input
-st.write("Enter horse details:")
-surgery = st.selectbox("Surgery", ["no", "yes"])
-age = st.selectbox("Age", ["adult", "young"])
-rectal_temp = st.number_input("Rectal Temperature")
-pulse = st.number_input("Pulse")
-respiratory_rate = st.number_input("Respiratory Rate")
-pain = st.selectbox("Pain", ["mild_pain", "depressed", "moderate", "severe_pain"])
-packed_cell_volume = st.number_input("Packed Cell Volume")
-total_protein = st.number_input("Total Protein")
+# Collect user inputs
+surgery = st.sidebar.selectbox("Surgery", ["yes", "no"])
+age = st.sidebar.selectbox("Age", ["adult", "young"])
+temp_of_extremities = st.sidebar.selectbox("Temperature of Extremities", ["normal", "cool", "cold", "warm"])
+peripheral_pulse = st.sidebar.selectbox("Peripheral Pulse", ["normal", "reduced", "absent"])
+mucous_membrane = st.sidebar.selectbox("Mucous Membrane", ["normal_pink", "bright_pink", "pale_pink",
+                                                           "pale_cyanotic", "bright_red", "dark_cyanotic"])
+capillary_refill_time = st.sidebar.selectbox("Capillary Refill Time", ["less_3_sec", "more_3_sec", "3"])
+pain = st.sidebar.selectbox("Pain", ["mild_pain", "depressed", "severe_pain", "alert"])
+peristalsis = st.sidebar.selectbox("Peristalsis", ["hypomotile", "absent", "hypermotile", "normal"])
+abdominal_distention = st.sidebar.selectbox("Abdominal Distention", ["slight", "severe", "none", "moderate"])
+nasogastric_tube = st.sidebar.selectbox("Nasogastric Tube", ["slight", "none", "significant"])
+nasogastric_reflux = st.sidebar.selectbox("Nasogastric Reflux", ["none", "significant"])
+rectal_exam_feces = st.sidebar.selectbox("Rectal Exam Feces", ["normal", "decreased", "increased", "absent"])
+abdomen = st.sidebar.selectbox("Abdomen", ["distend_large", "other", "normal", "firm"])
+abdomo_appearance = st.sidebar.selectbox("Abdomo Appearance", ["cloudy", "serosanguious", "clear", "purulent"])
+surgical_lesion = st.sidebar.selectbox("Surgical Lesion", ["no", "yes"])
+cp_data = st.sidebar.selectbox("CP Data", ["no", "yes"])
 
-# Predict the outcome when the user clicks the button
-if st.button("Predict Outcome"):
-    input_data = [label_encoder.transform([surgery])[0], label_encoder.transform([age])[0],
-                  rectal_temp, pulse, respiratory_rate, label_encoder.transform([pain])[0],
-                  packed_cell_volume, total_protein]
+# Predict health outcome
+def predict_health_outcome(surgery, age, temp_of_extremities, peripheral_pulse, mucous_membrane, capillary_refill_time,
+                            pain, peristalsis, abdominal_distention, nasogastric_tube, nasogastric_reflux,
+                            rectal_exam_feces, abdomen, abdomo_appearance, surgical_lesion, cp_data):
+    input_data = [
+        label_encoder.transform([surgery])[0], label_encoder.transform([age])[0],
+        label_encoder.transform([temp_of_extremities])[0], label_encoder.transform([peripheral_pulse])[0],
+        label_encoder.transform([mucous_membrane])[0], label_encoder.transform([capillary_refill_time])[0],
+        label_encoder.transform([pain])[0], label_encoder.transform([peristalsis])[0],
+        label_encoder.transform([abdominal_distention])[0], label_encoder.transform([nasogastric_tube])[0],
+        label_encoder.transform([nasogastric_reflux])[0], label_encoder.transform([rectal_exam_feces])[0],
+        label_encoder.transform([abdomen])[0], label_encoder.transform([abdomo_appearance])[0],
+        label_encoder.transform([surgical_lesion])[0], label_encoder.transform([cp_data])[0]
+    ]
     input_data = scaler.transform([input_data])
-    predicted_outcome = model.predict(input_data)
-    predicted_class = np.argmax(predicted_outcome)
+    prediction = model.predict(input_data)
+    return label_encoder.inverse_transform([np.argmax(prediction)])[0]
 
-    classes = ['died', 'euthanized', 'lived']
-    predicted_outcome_text = classes[predicted_class]
+if st.sidebar.button("Predict Outcome"):
+    predicted_outcome = predict_health_outcome(surgery, age, temp_of_extremities, peripheral_pulse, mucous_membrane,
+                                               capillary_refill_time, pain, peristalsis, abdominal_distention,
+                                               nasogastric_tube, nasogastric_reflux, rectal_exam_feces, abdomen,
+                                               abdomo_appearance, surgical_lesion, cp_data)
+    st.write(f"Predicted Health Outcome: {predicted_outcome}")
 
-    st.write(f"Predicted Outcome: {predicted_outcome_text}")
+# Display the final validation accuracy
+st.write(f"Final Validation Accuracy: {accuracy:.4f}")
 
-    # Evaluate accuracy on the validation set
-    y_pred_val = model.predict(X_val)
-    predicted_classes = np.argmax(y_pred_val, axis=1)
-    accuracy = accuracy_score(y_val, predicted_classes)
-    st.write(f"Accuracy on Validation Set: {accuracy:.4f}")
+# Optional: Display the dataset
+if st.sidebar.checkbox("Show Dataset"):
+    st.sub
+
 
